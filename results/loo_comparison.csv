@@ -1,0 +1,4 @@
+,rank,elpd,p,elpd_diff,weight,se,dse,warning
+regression,0,-28900.0,1260.1,0.0,0.97,57.0,0.0,False
+tau_only,1,-29500.0,1260.8,560.0,0.0,50.0,30.0,False
+phi_only,2,-29640.0,1308.4,700.0,0.03,46.0,36.0,False

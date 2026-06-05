@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+.history
+data
+fig_folder.txt
+results/stan_output
+results/regression/gpt/voter_mapping.pkl
+results/regression/bert/voter_mapping.pkl
