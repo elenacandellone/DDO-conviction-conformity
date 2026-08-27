@@ -42,6 +42,6 @@ custom_params = {"axes.spines.right": False, "axes.spines.top": False, "axes.spi
                 "axes.titlelocation":"left","xaxis.labellocation":"left","yaxis.labellocation":"bottom"}
 
 palette = ["#3d348b","#e6af2e","#191716","#e0e2db"] #use your favourite colours
-sns.set_theme(context='paper', style='white', palette=palette, font='Verdana', font_scale=1.1, color_codes=True,
+sns.set_theme(context='paper', style='white', palette=palette, font_scale=1.1, color_codes=True,
 rc=custom_params)
            

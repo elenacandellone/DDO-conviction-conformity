@@ -5,8 +5,8 @@ from ideal_point_helper import *
 np.random.seed(42)
 
 # 5. Run Model
-# Input: votes_full.pkl with computed phi and tau
-# Output: fitted models and diagnostics (model_regression_fit.pkl, model_phi_fit.pkl, model_tau_fit.pkl, and diagnostics in results folders)
+# Input: votes_full.pkl with computed tau (conviction), c (persuasiveness), and D (cross-cutting exposure)
+# Output: fitted models and diagnostics with STANDARDIZED predictors (tau/c/D z-scored before Stan) 
 
 #open figs folder txt file to read the path
 with open('./fig_folder.txt', 'r') as f:
@@ -14,7 +14,7 @@ with open('./fig_folder.txt', 'r') as f:
 
 
 # -------------------------------
-# TOPIC ALIGNMENT
+# CONVICTION / TOPIC ALIGNMENT
 # compute tau
 # cosine similarity between u_vec and d_vec
 # -------------------------------
@@ -33,12 +33,20 @@ def compute_tau(votes_df_):
     return votes_df
 
 # -------------------------------
-# PEER INFLUENCE
-# compute phi time-dependent
-# sum over previous voters in debate k of cosine similarity u_i, u_k * vote_kj
-# divided by number of previous voters
+# CROSS-CUTTING EXPOSURE
+# compute D (audience diversity / cross-cutting exposure) time-dependent
+# negative mean pairwise cosine similarity among prior voters in debate k
+# (D in [-1,1]: -1 = fully homogeneous prior audience, +1 = fully opposed)
+#
+# it is a property of the prior-voter set V_{j,i} alone, so it is not 
+# confounded by construction with tau (which does use u_i). Known limitation 
+# (see the diversity-measure simulation): mean pairwise dissimilarity cannot 
+# distinguish a large audience split into two internally-homogeneous opposing 
+# camps from a large audience with genuinely dispersed, uncorrelated beliefs. 
+# both converge toward D~0 as the prior-audience size grows, since same-camp 
+# and cross-camp pairs contribute oppositely to the average and their counts scale together.
 # -------------------------------
-def compute_phi_time_dep(votes_df_):
+def compute_D_time_dep(votes_df_):
     votes_df = votes_df_.copy()
 
     # user vectors matrix
@@ -59,17 +67,25 @@ def compute_phi_time_dep(votes_df_):
     )
     #clip values to avoid numerical issues
     cos_sim = cos_sim.clip(-1.0, 1.0)
-    
-    #initialize
-    phi = np.zeros(len(votes_df))
-    
-    # Iterate over debates
-    for j, df_j in tqdm(votes_df.groupby("debate_key"), desc="Computing phi (time-dependent)"):
 
-        # Voters, votes, and times
+    #initialize
+    D = np.zeros(len(votes_df))
+    # has_prior_D: 1 where D[i] is a genuinely observed pairwise-diversity
+    # value, 0 where no prior audience exists to compute it from (debaters,
+    # who never reach this loop body at all since time==0 is skipped below,
+    # and n<=1 voters). D itself stays 0 for those rows as a placeholder, but
+    # it is never meant to be read on its own -- see the STRUCTURAL D_obs
+    # HANDLING note in stan_data_gen: beta_D's slope is only applied where
+    # has_prior_D==1, so this flag (not the D=0 placeholder value) is what
+    # actually distinguishes "no prior audience" from "prior audience with a
+    # measured diversity near 0". 
+    has_prior_D = np.zeros(len(votes_df), dtype=int)
+
+    # Iterate over debates
+    for j, df_j in tqdm(votes_df.groupby("debate_key"), desc="Computing D (cross-cutting exposure)"):
+
+        # Voters and times
         voters = df_j["voter_name"].to_numpy()
-        #sgn_t  = df_j["sgn_tau"].to_numpy()
-        votes = df_j["vote"].to_numpy()
         times = df_j["vote_time"].to_numpy()
 
         #for each vote in debate j
@@ -82,21 +98,30 @@ def compute_phi_time_dep(votes_df_):
 
             # All voters at strictly earlier times + same time (excluding self)
             mask = (times <= time) & (voters != voter)
-            prev_voters = voters[mask]
-            prev_votes = votes[mask]
+            prior_voters = voters[mask]
+            n = len(prior_voters)
 
-            #get cosine similarities
-            weights = cos_sim.loc[voter, prev_voters].to_numpy()
             #get the index based on debate_key and voter_name
-            phi_idx = votes_df[
-                (votes_df["debate_key"] == j) & 
+            D_idx = votes_df[
+                (votes_df["debate_key"] == j) &
                 (votes_df["voter_name"] == voter)
             ].index[0]
 
-            # compute phi as weighted (by cos sim) average of previous votes
-            phi[phi_idx] = np.sum(weights * prev_votes) / len(prev_voters) if len(prev_voters) > 0 else 0
+            if n <= 1:
+                # no meaningful pairwise diversity with zero or one prior voter
+                D[D_idx] = 0
+                continue
 
-    votes_df["phi"] = phi
+            # mean pairwise cosine similarity among prior voters only, negated so
+            # that D > 0 = more diverse (dissimilar) prior audience, D < 0 = more
+            # ideologically homogeneous prior audience
+            sub = cos_sim.loc[prior_voters, prior_voters].to_numpy()
+            upper = sub[np.triu_indices(n, k=1)]
+            D[D_idx] = -np.mean(upper)
+            has_prior_D[D_idx] = 1
+
+    votes_df["D"] = D
+    votes_df["has_prior_D"] = has_prior_D
     return votes_df
 
 
@@ -120,7 +145,7 @@ if __name__ == "__main__":
     )
     
     # Merge votes with user and debate vectors
-    votes_full = pd.merge(votes[['debate_key','voter_name','vote_time','vote']],
+    votes_full = pd.merge(votes[['debate_key','voter_name','vote_time','vote','persuasive']],
                           debate_vectors[['debate_key','d_vec','topic']],
                           on='debate_key')
     votes_full = pd.merge(votes_full,
@@ -129,43 +154,64 @@ if __name__ == "__main__":
     votes_full['d_vec'] = votes_full['d_vec'].apply(string_to_vector)
     votes_full['u_vec'] = votes_full['u_vec'].apply(string_to_vector)
 
-    # compute phi and tau, and save to file
+    # persuasiveness: rename to c (matching the tau/D naming convention), and fill
+    # debaters' undefined signal (NaN, since a debater doesn't credit anyone for their
+    # own declared stance) with 0 -- same "no information" convention used for D at
+    # vote_time==0.
+    votes_full = votes_full.rename(columns={'persuasive': 'c'})
+    votes_full['c'] = votes_full['c'].fillna(0)
+
+    # compute tau, c, and D, and save to file
     if os.path.exists(f"{path_data}votes_full.pkl"):
-        print("votes_full with phi and tau already exists. Loading from file.")
+        print("votes_full with tau, c and D already exists. Loading from file.")
         votes_full = pd.read_pickle(f"{path_data}votes_full.pkl")
     else:
         votes_full = compute_tau(votes_full)
-        votes_full = compute_phi_time_dep(votes_full)
+        votes_full = compute_D_time_dep(votes_full)
         votes_full.to_pickle(f"{path_data}votes_full.pkl")
 
-    #plot phi and tau distribution as subplots
-    fig, axs = plt.subplots(1, 2, figsize=(12, 5))
-    sns.histplot(votes_full['phi'], bins=30, kde=True, ax=axs[0], color='skyblue')
+    #plot tau, c, and D distributions as subplots
+    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    sns.histplot(votes_full['tau'], bins=30, kde=True, ax=axs[0], color='salmon')
+    axs[0].set_xlabel(r'conviction / topic alignment ($\tau$)')
     axs[0].set_xlim(-1, 1)
-    #axs[0].set_title('Distribution of peer influence')
-    axs[0].set_xlabel(r'peer influence ($\varphi$)')
     axs[0].set_ylabel('count')
-    sns.histplot(votes_full['tau'], bins=30, kde=True, ax=axs[1], color='salmon')
-    #axs[1].set_title('Distribution of topic alignment')
-    axs[1].set_xlabel(r'topic alignment ($\tau$)')
+    sns.histplot(votes_full['c'], bins=30, kde=True, ax=axs[1], color='#e6af2e')
+    axs[1].set_xlabel(r'persuasiveness ($c$)')
     axs[1].set_xlim(-1, 1)
     axs[1].set_ylabel('count')
+    sns.histplot(votes_full['D'], bins=30, kde=True, ax=axs[2], color='skyblue')
+    axs[2].set_xlabel(r'cross-cutting exposure ($D$)')
+    axs[2].set_xlim(-1, 1)
+    axs[2].set_ylabel('count')
     plt.tight_layout()
-    plt.savefig(f'{fig_folder}/phi_tau_distribution.pdf')
-    plt.savefig(f'../plots/phi_tau_distribution.pdf')
+    plt.savefig('../plots/tau_c_D_distribution.pdf')
 
-    #generate stan data and save to file
-    stan_data, debate_mapping, voter_mapping, topic_mapping, topics, votes_full = stan_data_gen(votes_full)
-    with open(f"../results/regression/stan_data.pkl", "wb") as f:
+    # -------------------------------------------------------------------
+    # STANDARDIZED-PREDICTOR VERSION -- the only battery run (tau/c/D are
+    # z-scored before Stan; see stan_data_gen's docstring for why). No
+    # separate raw-scale fits or "_std"-suffixed paths anymore.
+    # -------------------------------------------------------------------
+    os.makedirs("../results/regression", exist_ok=True)
+
+    stan_data, debate_mapping, voter_mapping, topic_mapping, topics, votes_full, standardization = \
+        stan_data_gen(votes_full, standardize_predictors=True)
+
+    print("Standardization constants used:")
+    for k, v in standardization.items():
+        print(f"  {k}: mean={v['mean']:.4f}, sd={v['sd']:.4f}")
+
+    with open("../results/regression/stan_data.pkl", "wb") as f:
         pickle.dump(stan_data, f)
-    with open(f"../results/regression/debate_mapping.pkl", "wb") as f:
+    with open("../results/regression/standardization.pkl", "wb") as f:
+        pickle.dump(standardization, f)
+    with open("../results/regression/debate_mapping.pkl", "wb") as f:
         pickle.dump(debate_mapping, f)
-    with open(f"../results/regression/voter_mapping.pkl", "wb") as f:
+    with open("../results/regression/voter_mapping.pkl", "wb") as f:
         pickle.dump(voter_mapping, f)
-    with open(f"../results/regression/topic_mapping.pkl", "wb") as f:
+    with open("../results/regression/topic_mapping.pkl", "wb") as f:
         pickle.dump(topic_mapping, f)
 
-    # Run regression model (observed phi/tau)
     fit_regression = run_model(
         stan_file="model.stan",
         stan_data=stan_data,
@@ -174,20 +220,20 @@ if __name__ == "__main__":
         model_name="model_regression"
     )
 
-    # Run regression model with only phi (observed phi, no tau)
-    stan_data_phi_only = stan_data.copy()
-    stan_data_phi_only.pop('tau_obs')
-    fit_phi_only = run_model(
-        stan_file="model_phi.stan",
-        stan_data=stan_data_phi_only,
-        output_dir="../results/stan_output/phi/gpt",
-        results_dir="../results/phi/gpt",
-        model_name="model_phi"
+    stan_data_D_only = stan_data.copy()
+    stan_data_D_only.pop('tau_obs')
+    stan_data_D_only.pop('c_obs')
+    fit_D_only = run_model(
+        stan_file="model_D.stan",
+        stan_data=stan_data_D_only,
+        output_dir="../results/stan_output/D/gpt",
+        results_dir="../results/D/gpt",
+        model_name="model_D"
     )
 
-    # Run regression model with only tau (observed tau, no phi)
     stan_data_tau_only = stan_data.copy()
-    stan_data_tau_only.pop('phi_obs')
+    stan_data_tau_only.pop('c_obs')
+    stan_data_tau_only.pop('D_obs')
     fit_tau_only = run_model(
         stan_file="model_tau.stan",
         stan_data=stan_data_tau_only,
@@ -195,4 +241,28 @@ if __name__ == "__main__":
         results_dir="../results/tau/gpt",
         model_name="model_tau"
     )
+
+    stan_data_c_only = stan_data.copy()
+    stan_data_c_only.pop('tau_obs')
+    stan_data_c_only.pop('D_obs')
+    fit_c_only = run_model(
+        stan_file="model_c.stan",
+        stan_data=stan_data_c_only,
+        output_dir="../results/stan_output/c/gpt",
+        results_dir="../results/c/gpt",
+        model_name="model_c"
+    )
+
+    # kept regardless of predictive performance -- tests a specific
+    # theoretical hypothesis (Mutz-style moderation) rather than competing
+    # for LOO weight; see notebook a_model_comparison_classification.ipynb
+    # for why its posteriors should be read with caution even so.
+    fit_interaction = run_model(
+        stan_file="model_interaction.stan",
+        stan_data=stan_data,
+        output_dir="../results/stan_output/interaction/gpt",
+        results_dir="../results/interaction/gpt",
+        model_name="model_interaction"
+    )
+
     print("All models run successfully.")

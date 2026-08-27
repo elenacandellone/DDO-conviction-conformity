@@ -224,3 +224,5 @@ fig_folder.txt
 results/stan_output
 results/regression/gpt/voter_mapping.pkl
 results/regression/bert/voter_mapping.pkl
+
+_old

@@ -1,3 +1,4 @@
+from imports import *
 def filter_user_debates(votes, user_vectors, debate_vectors, debate_classification, remove_both_sides_no_votes=True):
     prev_user_count, prev_debate_count = -1, -1
 
@@ -60,11 +61,38 @@ def string_to_vector(s):
 # output: stan data dictionary with
 #         number of debates, voters, topics, votes
 #         encoded indices for debates, topics
-#         observed votes, phi, tau
+#         observed votes, D (cross-cutting exposure), c (persuasiveness), tau
 #         mappings for topics, voters, debates
 # -------------------------------
-def stan_data_gen(votes_df_):
+def stan_data_gen(votes_df_, standardize_predictors=False):
+    '''
+    standardize_predictors: if True, z-score D/c/tau (using this call's own
+    sample mean/sd) before handing them to Stan. All five .stan files use an
+    identical N(0,1) prior on every beta_*, and D's realized SD (~0.11) is
+    ~5.4x smaller than c's (~0.61) and ~1.6x smaller than tau's (~0.18) --
+    on the raw scale that shared prior is far more restrictive for beta_D
+    (and, transitively, for beta_tau_D, since model_interaction.stan builds
+    tau_D_obs = tau_obs .* D_obs from whatever tau_obs/D_obs it's given).
+    Standardizing here fixes both at once: beta_D/beta_c/beta_tau become
+    directly comparable "per-SD" effects under a fair shared prior, and the
+    interaction is built from the standardized (not raw) tau/D, which avoids
+    the degenerate near-zero variance of the raw product (sd(tau*D)=0.018
+    vs. sd(tau_std*D_std)=0.87, since corr(tau,D)~0) -- no changes needed to
+    any .stan file, since the interaction term is computed downstream of
+    tau_obs/D_obs inside Stan's own transformed data block.
+    The fitted means/sds are returned so raw-scale coefficients can be
+    recovered later: beta_raw = beta_std / sd  (and, for the interaction,
+    beta_tau_D_raw = beta_tau_D_std / (sd_tau * sd_D)).
+    '''
     votes_df = votes_df_.copy()
+
+    standardization = None
+    if standardize_predictors:
+        standardization = {}
+        for col in ['D', 'c', 'tau']:
+            mean, sd = votes_df[col].mean(), votes_df[col].std()
+            standardization[col] = {'mean': mean, 'sd': sd}
+            votes_df[col] = (votes_df[col] - mean) / sd
 
     N_debates = len(votes_df['debate_key'].unique())
     N_voters = len(votes_df['voter_name'].unique())
@@ -117,10 +145,20 @@ def stan_data_gen(votes_df_):
         'debate_id': votes_df['debate_idx'].astype(int).tolist(),
         'user_id': votes_df['voter_idx'].astype(int).tolist(),
         'y': y_obs.astype(int).tolist(),
-        'phi_obs': votes_df['phi'].tolist(),
-        'tau_obs': votes_df['tau'].tolist()
+        'D_obs': votes_df['D'].tolist(),
+        'c_obs': votes_df['c'].tolist(),
+        'tau_obs': votes_df['tau'].tolist(),
+        # 1 where D_obs[i] is a genuinely observed prior-audience diversity
+        # value, 0 where no prior audience exists (debaters, n<=1 voters --
+        # see has_prior_D in compute_D_time_dep). The .stan files gate
+        # beta_D[t]*D_obs[i] on this flag and add a separate gamma_no_prior
+        # intercept for has_prior_D==0 rows, instead of letting D_obs's
+        # placeholder value (0) double as "no data" -- pooling imputed and
+        # real D into one continuous predictor made beta_D's sign flip
+        # depending on where the placeholder was set (see 5a's comment).
+        'has_prior_D': votes_df['has_prior_D'].astype(int).tolist(),
     }
-    return stan_data, debate_mapping, voter_mapping, topic_mapping, topics, votes_df
+    return stan_data, debate_mapping, voter_mapping, topic_mapping, topics, votes_df, standardization
 
 
 

@@ -11,14 +11,25 @@ data {
   // observations (y=1 if PRO, y=0 if CON)
   array[N_votes] int<lower=0,upper=1> y;
 
-  vector[N_votes] phi_obs; // peer influence  
-  vector[N_votes] tau_obs; // topic alignment
+  vector[N_votes] D_obs;   // cross-cutting exposure (audience diversity)
+  vector[N_votes] c_obs;   // persuasiveness
+  vector[N_votes] tau_obs; // conviction / topic alignment
+  // 1 if D_obs[i] is a genuinely observed prior-audience value, 0 if no
+  // prior audience exists (debaters, n<=1 voters)
+  array[N_votes] int<lower=0,upper=1> has_prior_D;
 }
 
 parameters {
   // Topic-level fixed effects
-  vector[N_topics] beta_phi;
+  vector[N_topics] beta_D;
+  vector[N_topics] beta_c;
   vector[N_topics] beta_tau;
+
+  // Intercept shift for votes with no prior audience, separate from beta_D
+  // so the "no data" mean vote-propensity doesn't get attributed to
+  // wherever D_obs's placeholder value sits. Global rather than per-topic
+  // -- see model_D.stan for the reasoning.
+  real gamma_no_prior;
 
   // Random intercepts (non-centered)
   vector[N_users]   alpha_user_raw;
@@ -41,8 +52,10 @@ model {
   alpha_user_raw   ~ normal(0, 1);
   alpha_debate_raw ~ normal(0, 1);
 
-  beta_phi ~ normal(0, 1);
-  beta_tau ~ normal(0, 1);
+  beta_D        ~ normal(0, 1);
+  beta_c        ~ normal(0, 1);
+  beta_tau      ~ normal(0, 1);
+  gamma_no_prior ~ normal(0, 1);
 
 
   // Likelihood
@@ -54,7 +67,10 @@ model {
     real eta =
         alpha_user[u]
       + alpha_debate[d]
-      + beta_phi[t] * phi_obs[i]
+      + (has_prior_D[i]
+           ? beta_D[t] * D_obs[i]
+           : gamma_no_prior)
+      + beta_c[t] * c_obs[i]
       + beta_tau[t] * tau_obs[i];
 
     y[i] ~ bernoulli_logit(eta);
@@ -72,10 +88,12 @@ generated quantities {
     real eta =
         alpha_user[u]
       + alpha_debate[d]
-      + beta_phi[t] * phi_obs[i]
+      + (has_prior_D[i]
+           ? beta_D[t] * D_obs[i]
+           : gamma_no_prior)
+      + beta_c[t] * c_obs[i]
       + beta_tau[t] * tau_obs[i];
 
     log_lik[i] = bernoulli_logit_lpmf(y[i] | eta);
   }
 }
-

@@ -63,7 +63,7 @@ plt.ylabel("topic")
 plt.title("topic and stance distribution of user opinions")
 plt.tight_layout()
 plt.savefig('../plots/users_classification.pdf')
-plt.savefig(f'{fig_folder}/users_classification.pdf')
+#plt.savefig(f'{fig_folder}/users_classification.pdf')
 
 # -----------------------------
 # Create user vectors
@@ -167,4 +167,4 @@ for i, var in enumerate(demographic_vars):
 
 plt.tight_layout()
 plt.savefig('../plots/user_demographics.pdf')
-plt.savefig(f'{fig_folder}/user_demographics.pdf')
+#plt.savefig(f'{fig_folder}/user_demographics.pdf')

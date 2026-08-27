@@ -17,6 +17,8 @@ def process_debate_votes(debate_data_):
     - vote: numerical representation of the vote (1 for Pro, -1 for Con, 0 for Tied)
     - vote_time: order of the vote (0 for debaters, incrementing for each vote by the voter)
     - is_debater: 1 if the debater is a participant, 0 if the debater is a voter
+    - persuasive: signed persuasiveness signal (1 if the voter credited the Pro debater with
+      "Made more convincing arguments", -1 if the Con debater, 0 if neither/both/tied or missing)
     '''
     debate_data = debate_data_.copy()
     #collect data in a list
@@ -54,11 +56,27 @@ def process_debate_votes(debate_data_):
         # Process audience votes
         for vote in debate_info['votes']:
             voter_name = vote['user_name']
-            for candidate, vote_info in vote['votes_map'].items():
+            votes_map = vote['votes_map']
+
+            # Persuasiveness: which participant's arguments did the voter find more
+            # convincing? "Made more convincing arguments" is reported per-candidate in
+            # votes_map, so a clean signal only exists when exactly one of the two
+            # participants was credited with it. Ties, neither, or both credited are all
+            # recorded as 0 (no persuasiveness signal), same convention as vote_1/vote_2.
+            p1_convincing = votes_map.get(participant_1, {}).get('Made more convincing arguments', False)
+            p2_convincing = votes_map.get(participant_2, {}).get('Made more convincing arguments', False)
+            if p1_convincing and not p2_convincing:
+                persuasive = vote_1
+            elif p2_convincing and not p1_convincing:
+                persuasive = vote_2
+            else:
+                persuasive = 0
+
+            for candidate, vote_info in votes_map.items():
                 #skip votes by debaters to avoid double counting
                 if voter_name == participant_1 or voter_name == participant_2:
                     continue
-                
+
                 #get the stance of the candidate (debater) from the part_dict
                 stance = part_dict.get(candidate, 'Tied')  # Default to 'Tied' if debater not found
 
@@ -69,10 +87,10 @@ def process_debate_votes(debate_data_):
                 vote_time += 1 # Increment vote time for each vote by the voter
                 is_debater = 0 if voter_name != participant_1 and voter_name != participant_2 else 1
                 if vote_value > 0:
-                    votes_data.append([debate_key, debate_title, candidate, stance, voter_name, vote_value, vote_time, is_debater])
-    
+                    votes_data.append([debate_key, debate_title, candidate, stance, voter_name, vote_value, vote_time, is_debater, persuasive])
+
     # Create DataFrame
-    df = pd.DataFrame(votes_data, columns=['debate_key', 'debate_title', 'debater', 'pro_con', 'voter_name', 'vote', 'vote_time', 'is_debater'])
+    df = pd.DataFrame(votes_data, columns=['debate_key', 'debate_title', 'debater', 'pro_con', 'voter_name', 'vote', 'vote_time', 'is_debater', 'persuasive'])
 
     
     #order by debate_key and vote_time (higher time are older votes) and is_debater (debater votes first)
@@ -199,6 +217,9 @@ if __name__ == "__main__":
     print(f"Total votes processed: {len(df_votes)}")
     print(f"Unique debates: {df_votes['debate_key'].nunique()}")
     print(f"Unique voters: {df_votes['voter_name'].nunique()}")
+    print(f"Persuasiveness signal coverage (non-zero 'persuasive'): "
+          f"{(df_votes['persuasive'] != 0).mean() * 100:.2f}%")
+    print(f"'persuasive' value counts:\n{df_votes['persuasive'].value_counts()}")
 
     if not os.path.exists('../data/processed/pkl/'):
         os.makedirs('../data/processed/pkl/')
