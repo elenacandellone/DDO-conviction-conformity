@@ -1,4 +1,4 @@
-topic,beta_D_real,5%_D_real,95%_D_real,beta_D_future,5%_D_future,95%_D_future,diff_mean,diff_5%,diff_95%,diff_excludes_zero
+topic,beta_eta_real,5%_eta_real,95%_eta_real,beta_eta_future,5%_eta_future,95%_eta_future,diff_mean,diff_5%,diff_95%,diff_excludes_zero
 abortion,0.0613056,0.00428641,0.118422,-0.0275787,-0.0813616,0.025807,0.0888842227685778,0.013682665160999993,0.16653501364999998,True
 affirmative action,-0.0183739,-0.14076,0.100651,-0.0132332,-0.117061,0.0888717,-0.005140682845581976,-0.166386265155,0.14971779356499995,False
 animal rights,-0.00173802,-0.0599793,0.0577876,0.0436715,-0.0154401,0.102539,-0.04540953699887188,-0.13114826375,0.035826649664999974,False

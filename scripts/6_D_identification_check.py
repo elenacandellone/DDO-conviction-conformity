@@ -4,34 +4,34 @@ from imports import *
 from ideal_point_helper import *
 np.random.seed(42)
 
-# 6. Cross-cutting exposure (D) identification check
+# 6. Cross-cutting exposure (eta) identification check
 #
-# D is NOT confounded by construction with tau: D is a
+# eta is NOT confounded by construction with tau: eta is a
 # property of the prior-voter set V_{j,i} alone and never touches the focal
-# user's own belief vector u_i. But D can still be confounded by SELECTION:
+# user's own belief vector u_i. But eta can still be confounded by SELECTION:
 # users with certain beliefs might select into debates that already have a
 # more homogeneous or more diverse audience (e.g. avoiding a debate that
 # already looks like a landslide), which would make beta_D reflect who chose
 # to show up rather than any effect of the audience itself.
 #
-# This script runs a temporal-placebo analysis to compute D from votes cast
-# AFTER the focal user's own vote ("future D"). Future votes cannot causally
-# or compositionally precede a past vote, so if beta_D estimated on future D
-# is comparable in magnitude to beta_D on the real (past) D, that's evidence
+# This script runs a temporal-placebo analysis to compute eta from votes cast
+# AFTER the focal user's own vote ("future eta"). Future votes cannot causally
+# or compositionally precede a past vote, so if beta_D estimated on future eta
+# is comparable in magnitude to beta_D on the real (past) eta, that's evidence
 # consistent with selection into debate audiences rather than a genuine
 # association between the pre-existing audience and how a user votes.
 #
 # Input: votes_full.pkl
-# Output: D_future column cached in votes_placebo.pkl; comparison table 
+# Output: eta_future column cached in votes_placebo.pkl; comparison table
 
 
 # -------------------------------
 # CROSS-CUTTING EXPOSURE (FUTURE / PLACEBO)
-# same as compute_D_time_dep, but the prior-voter mask is flipped: average
+# same as compute_eta_time_dep, but the prior-voter mask is flipped: average
 # over voters who voted at or AFTER the focal user's own vote (excluding
 # self), instead of at or before.
 # -------------------------------
-def compute_D_future_time_dep(votes_df_):
+def compute_eta_future_time_dep(votes_df_):
     votes_df = votes_df_.copy()
 
     u_vecs = (
@@ -49,17 +49,18 @@ def compute_D_future_time_dep(votes_df_):
     )
     cos_sim = cos_sim.clip(-1.0, 1.0)
 
-    D_future = np.zeros(len(votes_df))
-    # has_prior_D_future: same "genuinely observed" flag as has_prior_D in
-    # compute_D_time_dep (5a_run_model_gpt.py), mirrored for the future/
+    eta_future = np.zeros(len(votes_df))
+    # has_prior_eta_future: same "genuinely observed" flag as has_prior_eta in
+    # compute_eta_time_dep (5a_run_model_gpt.py), mirrored for the future/
     # placebo audience. Needed for the same reason: stan_data_gen's
-    # has_prior_D gates beta_D on real data only, and this placebo run must
-    # supply that flag too (renamed to has_prior_D below, same as D_future
-    # -> D) or it would silently fall back to whatever has_prior_D happens
-    # to already be sitting in votes_full from the real/past D computation.
-    has_prior_D_future = np.zeros(len(votes_df), dtype=int)
+    # has_prior_D (Stan-side name, unchanged) gates beta_D on real data only,
+    # and this placebo run must supply that flag too (renamed to has_prior_eta
+    # below, same as eta_future -> eta) or it would silently fall back to
+    # whatever has_prior_eta happens to already be sitting in votes_full from
+    # the real/past eta computation.
+    has_prior_eta_future = np.zeros(len(votes_df), dtype=int)
 
-    for j, df_j in tqdm(votes_df.groupby("debate_key"), desc="Computing D (future / placebo)"):
+    for j, df_j in tqdm(votes_df.groupby("debate_key"), desc="Computing eta (future / placebo)"):
         voters = df_j["voter_name"].to_numpy()
         times = df_j["vote_time"].to_numpy()
 
@@ -69,27 +70,27 @@ def compute_D_future_time_dep(votes_df_):
                 continue
 
             # All voters at strictly later times + same time (excluding self) --
-            # mirrors the "<=" tie handling used for the real (past) D
+            # mirrors the "<=" tie handling used for the real (past) eta
             mask = (times >= time) & (voters != voter)
             fut_voters = voters[mask]
             n = len(fut_voters)
 
-            D_idx = votes_df[
+            row_idx = votes_df[
                 (votes_df["debate_key"] == j) &
                 (votes_df["voter_name"] == voter)
             ].index[0]
 
             if n <= 1:
-                D_future[D_idx] = 0
+                eta_future[row_idx] = 0
                 continue
 
             sub = cos_sim.loc[fut_voters, fut_voters].to_numpy()
             upper = sub[np.triu_indices(n, k=1)]
-            D_future[D_idx] = -np.mean(upper)
-            has_prior_D_future[D_idx] = 1
+            eta_future[row_idx] = -np.mean(upper)
+            has_prior_eta_future[row_idx] = 1
 
-    votes_df["D_future"] = D_future
-    votes_df["has_prior_D_future"] = has_prior_D_future
+    votes_df["eta_future"] = eta_future
+    votes_df["has_prior_eta_future"] = has_prior_eta_future
     return votes_df
 
 
@@ -163,102 +164,105 @@ def compute_diff_ci(fit_real, fit_future, topic_mapping, ci=0.90):
 # -------------------------------
 if __name__ == "__main__":
 
-    os.makedirs("../results/D_placebo/gpt", exist_ok=True)
+    os.makedirs("../results/eta_placebo/gpt", exist_ok=True)
     path_data = "../data/processed/pkl/"
 
-    # load votes_full with real D/c/tau already attached (see 5a_run_model_gpt.py)
+    # load votes_full with real eta/rho/tau already attached (see 5a_run_model_gpt.py)
     votes_full = pd.read_pickle(f"{path_data}votes_full.pkl")
 
-    # compute future D, cache separately so the real votes_full.pkl is never
+    # compute future eta, cache separately so the real votes_full.pkl is never
     # overwritten
     if os.path.exists(f"{path_data}votes_placebo.pkl"):
-        print("votes_full with D_future already exists. Loading from file.")
+        print("votes_full with eta_future already exists. Loading from file.")
         votes_full = pd.read_pickle(f"{path_data}votes_placebo.pkl")
     else:
-        votes_full = compute_D_future_time_dep(votes_full)
+        votes_full = compute_eta_future_time_dep(votes_full)
         votes_full.to_pickle(f"{path_data}votes_placebo.pkl")
 
-    # sanity check: compare distributions of real D vs future D
+    # sanity check: compare distributions of real eta vs future eta
     fig, axs = plt.subplots(1, 2, figsize=(12, 5))
-    sns.histplot(votes_full['D'], bins=30, kde=True, ax=axs[0], color='skyblue')
+    sns.histplot(votes_full['eta'], bins=30, kde=True, ax=axs[0], color='skyblue')
     axs[0].set_xlim(-1, 1)
-    axs[0].set_xlabel(r'cross-cutting exposure, past audience ($D$)')
+    axs[0].set_xlabel(r'cross-cutting exposure, past audience ($\eta$)')
     axs[0].set_ylabel('count')
-    sns.histplot(votes_full['D_future'], bins=30, kde=True, ax=axs[1], color='mediumpurple')
+    sns.histplot(votes_full['eta_future'], bins=30, kde=True, ax=axs[1], color='mediumpurple')
     axs[1].set_xlim(-1, 1)
-    axs[1].set_xlabel(r'cross-cutting exposure, future audience ($D_{future}$)')
+    axs[1].set_xlabel(r'cross-cutting exposure, future audience ($\eta_{future}$)')
     axs[1].set_ylabel('count')
     plt.tight_layout()
     plt.savefig('../plots/FigA8.pdf')
 
-    # generate stan data using D_future IN PLACE OF D (and its matching
-    # has_prior_D_future IN PLACE OF has_prior_D), standardized the same way 5a standardizes the real
-    # D (see module docstring: each side is z-scored against its own
-    # mean/sd, so beta_D_real/beta_D_future stay comparable as per-SD effects)
+    # generate stan data using eta_future IN PLACE OF eta (and its matching
+    # has_prior_eta_future IN PLACE OF has_prior_eta), standardized the same
+    # way 5a standardizes the real eta (see module docstring: each side is
+    # z-scored against its own mean/sd, so beta_D_real/beta_D_future stay
+    # comparable as per-SD effects)
     votes_placebo = (
         votes_full
-        .drop(columns=['D', 'has_prior_D'])
-        .rename(columns={'D_future': 'D', 'has_prior_D_future': 'has_prior_D'})
+        .drop(columns=['eta', 'has_prior_eta'])
+        .rename(columns={'eta_future': 'eta', 'has_prior_eta_future': 'has_prior_eta'})
     )
     stan_data_future, debate_mapping, voter_mapping, topic_mapping, topics, votes_placebo, standardization_future = \
         stan_data_gen(votes_placebo, standardize_predictors=True)
 
-    with open("../results/D_placebo/gpt/stan_data.pkl", "wb") as f:
+    with open("../results/eta_placebo/gpt/stan_data.pkl", "wb") as f:
         pickle.dump(stan_data_future, f)
-    with open("../results/D_placebo/gpt/standardization.pkl", "wb") as f:
+    with open("../results/eta_placebo/gpt/standardization.pkl", "wb") as f:
         pickle.dump(standardization_future, f)
-    with open("../results/D_placebo/gpt/topic_mapping.pkl", "wb") as f:
+    with open("../results/eta_placebo/gpt/topic_mapping.pkl", "wb") as f:
         pickle.dump(topic_mapping, f)
 
-    # D-only stan data (drop tau_obs/c_obs, matching model_D.stan's data block)
-    stan_data_future_D_only = stan_data_future.copy()
-    stan_data_future_D_only.pop('tau_obs')
-    stan_data_future_D_only.pop('c_obs')
+    # eta-only stan data (drop tau_obs/c_obs, matching model_eta.stan's data block)
+    stan_data_future_eta_only = stan_data_future.copy()
+    stan_data_future_eta_only.pop('tau_obs')
+    stan_data_future_eta_only.pop('c_obs')
 
-    # run the SAME model spec as the real D-only model, just with D built
-    # from future votes instead of past votes. Uses model_D_placebo.stan --
-    # a byte-identical copy of model_D.stan under its own filename -- rather
-    # than model_D.stan directly, because run_model() always compiles with
+    # run the SAME model spec as the real eta-only model, just with eta built
+    # from future votes instead of past votes. Uses model_eta_placebo.stan --
+    # a byte-identical copy of model_eta.stan under its own filename -- rather
+    # than model_eta.stan directly, because run_model() always compiles with
     # force_compile=True: if this script runs while 5a_run_model_gpt.py is
-    # still mid-fit on model_D.stan, both processes would force-recompile
-    # the SAME binary (scripts/model_D) while 5a's chains are actively
+    # still mid-fit on model_eta.stan, both processes would force-recompile
+    # the SAME binary (scripts/model_eta) while 5a's chains are actively
     # running it. A private copy gives this script its own compile target,
     # so the two never touch the same binary regardless of timing.
-    fit_D_future = run_model(
-        stan_file="model_D_placebo.stan",
-        stan_data=stan_data_future_D_only,
-        output_dir="../results/stan_output/D_placebo/gpt",
-        results_dir="../results/D_placebo/gpt",
-        model_name="model_D_future"
+    fit_eta_future = run_model(
+        stan_file="model_eta_placebo.stan",
+        stan_data=stan_data_future_eta_only,
+        output_dir="../results/stan_output/eta_placebo/gpt",
+        results_dir="../results/eta_placebo/gpt",
+        model_name="model_eta_future"
     )
-    print("Future/placebo D model run successfully.")
+    print("Future/placebo eta model run successfully.")
 
     # -------------------------------------------------------------
-    # Load the real, standardized D-only fit (model_D, see the
+    # Load the real, standardized eta-only fit (model_eta, see the
     # "STANDARDIZED-PREDICTOR VERSION" section of 5a_run_model_gpt.py) for
     # comparison. run_model() caches to output_dir/results_dir and reloads
     # from file if results already exist there, so this call will NOT refit
     # if 5a_run_model_gpt.py has already produced it -- it only compiles
-    # model_D_placebo.stan (same reasoning as above) in the case where it
+    # model_eta_placebo.stan (same reasoning as above) in the case where it
     # hasn't, producing a numerically identical fit (same data, same
-    # seed=123) without racing 5a's own model_D binary.
+    # seed=123) without racing 5a's own model_eta binary.
     # -------------------------------------------------------------
     with open("../results/regression/stan_data.pkl", "rb") as f:
         stan_data_real = pickle.load(f)
-    stan_data_real_D_only = stan_data_real.copy()
-    stan_data_real_D_only.pop('tau_obs')
-    stan_data_real_D_only.pop('c_obs')
+    stan_data_real_eta_only = stan_data_real.copy()
+    stan_data_real_eta_only.pop('tau_obs')
+    stan_data_real_eta_only.pop('c_obs')
 
-    fit_D_real = run_model(
-        stan_file="model_D_placebo.stan",
-        stan_data=stan_data_real_D_only,
-        output_dir="../results/stan_output/D/gpt",
-        results_dir="../results/D/gpt",
-        model_name="model_D"
+    fit_eta_real = run_model(
+        stan_file="model_eta_placebo.stan",
+        stan_data=stan_data_real_eta_only,
+        output_dir="../results/stan_output/eta/gpt",
+        results_dir="../results/eta/gpt",
+        model_name="model_eta"
     )
 
     # -------------------------------------------------------------
     # comparison: real beta_D vs future (placebo) beta_D, by topic
+    # (beta_D is Stan's own parameter name, unchanged -- see module docstring
+    # in ideal_point_helper.py)
     # -------------------------------------------------------------
     def betas_df(summary_df, topic_mapping):
         beta_D_df = summary_df.loc[summary_df.index.str.startswith('beta_D')].copy()
@@ -271,29 +275,29 @@ if __name__ == "__main__":
         return beta_D_df[['topic', 'Mean', '5%', '95%']]
 
     try:
-        summary_real = pd.read_csv("../results/D/gpt/summary.csv", index_col=0)
-        summary_future = pd.read_csv("../results/D_placebo/gpt/summary.csv", index_col=0)
-        # D's own results dir doesn't carry a topic_mapping.pkl (run_model()
+        summary_real = pd.read_csv("../results/eta/gpt/summary.csv", index_col=0)
+        summary_future = pd.read_csv("../results/eta_placebo/gpt/summary.csv", index_col=0)
+        # eta's own results dir doesn't carry a topic_mapping.pkl (run_model()
         # only writes summary.csv); it shares the same topic set/encoding as the
         # rest of 5a's standardized battery, so reuse regression's mapping.
         topic_mapping_real = pd.read_pickle("../results/regression/topic_mapping.pkl")
-        topic_mapping_future = pd.read_pickle("../results/D_placebo/gpt/topic_mapping.pkl")
+        topic_mapping_future = pd.read_pickle("../results/eta_placebo/gpt/topic_mapping.pkl")
 
-        beta_D_real = betas_df(summary_real, topic_mapping_real).set_index('topic')
-        beta_D_future = betas_df(summary_future, topic_mapping_future).set_index('topic')
+        beta_eta_real = betas_df(summary_real, topic_mapping_real).set_index('topic')
+        beta_eta_future = betas_df(summary_future, topic_mapping_future).set_index('topic')
 
-        beta_D_real = beta_D_real.rename(columns={
-            'Mean': 'beta_D_real', '5%': '5%_D_real', '95%': '95%_D_real'
+        beta_eta_real = beta_eta_real.rename(columns={
+            'Mean': 'beta_eta_real', '5%': '5%_eta_real', '95%': '95%_eta_real'
         })
-        beta_D_future = beta_D_future.rename(columns={
-            'Mean': 'beta_D_future', '5%': '5%_D_future', '95%': '95%_D_future'
+        beta_eta_future = beta_eta_future.rename(columns={
+            'Mean': 'beta_eta_future', '5%': '5%_eta_future', '95%': '95%_eta_future'
         })
 
-        comparison = beta_D_real.merge(beta_D_future, left_index=True, right_index=True)
-        r_spearman = comparison['beta_D_real'].corr(comparison['beta_D_future'], method='spearman')
+        comparison = beta_eta_real.merge(beta_eta_future, left_index=True, right_index=True)
+        r_spearman = comparison['beta_eta_real'].corr(comparison['beta_eta_future'], method='spearman')
         print(f"Spearman r (real vs. future beta_D): {r_spearman:.3f}")
 
-        diff_ci_df = compute_diff_ci(fit_D_real, fit_D_future, topic_mapping_real)
+        diff_ci_df = compute_diff_ci(fit_eta_real, fit_eta_future, topic_mapping_real)
         comparison = comparison.merge(diff_ci_df, left_index=True, right_index=True)
 
         n_credible = comparison['diff_excludes_zero'].sum()
@@ -301,24 +305,24 @@ if __name__ == "__main__":
               f"(real - future) that excludes zero.")
 
         fig, ax = plt.subplots(figsize=(6, 6))
-        ax.scatter(comparison['beta_D_real'], comparison['beta_D_future'], alpha=0.7)
+        ax.scatter(comparison['beta_eta_real'], comparison['beta_eta_future'], alpha=0.7)
         lims = [
-            min(comparison['beta_D_real'].min(), comparison['beta_D_future'].min()),
-            max(comparison['beta_D_real'].max(), comparison['beta_D_future'].max()),
+            min(comparison['beta_eta_real'].min(), comparison['beta_eta_future'].min()),
+            max(comparison['beta_eta_real'].max(), comparison['beta_eta_future'].max()),
         ]
         ax.plot(lims, lims, linestyle='--', color='gray')
-        ax.set_xlabel(r"$\beta_D$ (real, past audience, standardized)")
-        ax.set_ylabel(r"$\beta_D$ (placebo, future audience, standardized)")
+        ax.set_xlabel(r"$\beta_\eta$ (real, past audience, standardized)")
+        ax.set_ylabel(r"$\beta_\eta$ (placebo, future audience, standardized)")
         ax.set_title(f"Spearman r = {r_spearman:.2f}")
         plt.tight_layout()
         plt.savefig("../plots/FigA9.pdf")
 
-        comparison.to_csv("../results/D_placebo/gpt/D_real_vs_future.csv")
+        comparison.to_csv("../results/eta_placebo/gpt/eta_real_vs_future.csv")
 
     except FileNotFoundError as e:
         print(
             f"Missing expected file: {e}. Check that both the real, standardized "
-            "D-only model (via 5a_run_model_gpt.py's STANDARDIZED-PREDICTOR "
-            "section) and this script's future/placebo D model have been run "
+            "eta-only model (via 5a_run_model_gpt.py's STANDARDIZED-PREDICTOR "
+            "section) and this script's future/placebo eta model have been run "
             "and their summary.csv / topic_mapping.pkl outputs saved."
         )

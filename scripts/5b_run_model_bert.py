@@ -31,11 +31,11 @@ def compute_tau(votes_df_):
 
 # -------------------------------
 # CROSS-CUTTING EXPOSURE
-# compute D (audience diversity / cross-cutting exposure) time-dependent
+# compute eta (audience diversity / cross-cutting exposure) time-dependent
 # negative mean pairwise cosine similarity among prior voters in debate k
-# (D in [-1,1]: -1 = fully homogeneous prior audience, +1 = fully opposed)
+# (eta in [-1,1]: -1 = fully homogeneous prior audience, +1 = fully opposed)
 # -------------------------------
-def compute_D_time_dep(votes_df_):
+def compute_eta_time_dep(votes_df_):
     votes_df = votes_df_.copy()
 
     # user vectors matrix
@@ -58,15 +58,15 @@ def compute_D_time_dep(votes_df_):
     cos_sim = cos_sim.clip(-1.0, 1.0)
 
     #initialize
-    D = np.zeros(len(votes_df))
-    # has_prior_D: 1 where D[i] is a genuinely observed pairwise-diversity
+    eta = np.zeros(len(votes_df))
+    # has_prior_eta: 1 where eta[i] is a genuinely observed pairwise-diversity
     # value, 0 where no prior audience exists to compute it from (debaters,
     # who never reach this loop body since time==0 is skipped below, and
-    # n<=1 voters). 
-    has_prior_D = np.zeros(len(votes_df), dtype=int)
+    # n<=1 voters).
+    has_prior_eta = np.zeros(len(votes_df), dtype=int)
 
     # Iterate over debates
-    for j, df_j in tqdm(votes_df.groupby("debate_key"), desc="Computing D (cross-cutting exposure)"):
+    for j, df_j in tqdm(votes_df.groupby("debate_key"), desc="Computing eta (cross-cutting exposure)"):
 
         # Voters and times
         voters = df_j["voter_name"].to_numpy()
@@ -86,26 +86,26 @@ def compute_D_time_dep(votes_df_):
             n = len(prior_voters)
 
             #get the index based on debate_key and voter_name
-            D_idx = votes_df[
+            row_idx = votes_df[
                 (votes_df["debate_key"] == j) &
                 (votes_df["voter_name"] == voter)
             ].index[0]
 
             if n <= 1:
                 # no meaningful pairwise diversity with zero or one prior voter
-                D[D_idx] = 0
+                eta[row_idx] = 0
                 continue
 
             # mean pairwise cosine similarity among prior voters only, negated so
-            # that D > 0 = more diverse (dissimilar) prior audience, D < 0 = more
+            # that eta > 0 = more diverse (dissimilar) prior audience, eta < 0 = more
             # ideologically homogeneous prior audience
             sub = cos_sim.loc[prior_voters, prior_voters].to_numpy()
             upper = sub[np.triu_indices(n, k=1)]
-            D[D_idx] = -np.mean(upper)
-            has_prior_D[D_idx] = 1
+            eta[row_idx] = -np.mean(upper)
+            has_prior_eta[row_idx] = 1
 
-    votes_df["D"] = D
-    votes_df["has_prior_D"] = has_prior_D
+    votes_df["eta"] = eta
+    votes_df["has_prior_eta"] = has_prior_eta
     return votes_df
 
 
@@ -139,42 +139,42 @@ if __name__ == "__main__":
     votes_full['d_vec'] = votes_full['d_vec'].apply(string_to_vector)
     votes_full['u_vec'] = votes_full['u_vec'].apply(string_to_vector)
 
-    # persuasiveness: rename to c (matching the tau/D naming convention), and fill
-    # debaters' undefined signal (NaN, since a debater doesn't credit anyone for their
-    # own declared stance) with 0 -- same "no information" convention used for D at
-    # vote_time==0.
-    votes_full = votes_full.rename(columns={'persuasive': 'c'})
-    votes_full['c'] = votes_full['c'].fillna(0)
+    # persuasiveness: rename to rho (matching the tau/eta naming convention), and
+    # fill debaters' undefined signal (NaN, since a debater doesn't credit anyone
+    # for their own declared stance) with 0 -- same "no information" convention
+    # used for eta at vote_time==0.
+    votes_full = votes_full.rename(columns={'persuasive': 'rho'})
+    votes_full['rho'] = votes_full['rho'].fillna(0)
 
-    # compute tau, c, and D, and save to file
+    # compute tau, rho, and eta, and save to file
     if os.path.exists(f"{path_data}/bert/votes_full_bert.pkl"):
-        print("votes_full with tau, c and D already exists. Loading from file.")
+        print("votes_full with tau, rho and eta already exists. Loading from file.")
         votes_full = pd.read_pickle(f"{path_data}/bert/votes_full_bert.pkl")
     else:
         votes_full = compute_tau(votes_full)
-        votes_full = compute_D_time_dep(votes_full)
+        votes_full = compute_eta_time_dep(votes_full)
         votes_full.to_pickle(f"{path_data}votes_full_bert.pkl")
 
-    #plot tau, c, and D distributions as subplots
+    #plot tau, rho, and eta distributions as subplots
     fig, axs = plt.subplots(1, 3, figsize=(15, 5))
     sns.histplot(votes_full['tau'], bins=30, kde=True, ax=axs[0], color='salmon')
     axs[0].set_xlabel(r'conviction / topic alignment ($\tau$)')
     axs[0].set_xlim(-1, 1)
     axs[0].set_ylabel('count')
-    sns.histplot(votes_full['c'], bins=30, kde=True, ax=axs[1], color='#e6af2e')
-    axs[1].set_xlabel(r'persuasiveness ($c$)')
+    sns.histplot(votes_full['rho'], bins=30, kde=True, ax=axs[1], color='#e6af2e')
+    axs[1].set_xlabel(r'persuasiveness ($\rho$)')
     axs[1].set_xlim(-1, 1)
     axs[1].set_ylabel('count')
-    sns.histplot(votes_full['D'], bins=30, kde=True, ax=axs[2], color='skyblue')
-    axs[2].set_xlabel(r'cross-cutting exposure ($D$)')
+    sns.histplot(votes_full['eta'], bins=30, kde=True, ax=axs[2], color='skyblue')
+    axs[2].set_xlabel(r'cross-cutting exposure ($\eta$)')
     axs[2].set_xlim(-1, 1)
     axs[2].set_ylabel('count')
     plt.tight_layout()
-    #plt.savefig(f'{fig_folder}/tau_c_D_distribution_bert.pdf')
-    plt.savefig('../plots/tau_c_D_distribution_bert.pdf')
+    #plt.savefig(f'{fig_folder}/tau_rho_eta_distribution_bert.pdf')
+    plt.savefig('../plots/tau_rho_eta_distribution_bert.pdf')
 
     # -------------------------------------------------------------------
-    # STANDARDIZED-PREDICTOR VERSION -- the only battery run (tau/c/D are
+    # STANDARDIZED-PREDICTOR VERSION -- the only battery run (tau/rho/eta are
     # z-scored before Stan; see stan_data_gen's docstring for why). No
     # separate raw-scale fits or "_std"-suffixed paths anymore.
     # -------------------------------------------------------------------

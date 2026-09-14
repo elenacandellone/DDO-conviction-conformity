@@ -4,14 +4,14 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 # 7. Diversity-measure simulation
 #
-# D (cross-cutting exposure, see compute_D_time_dep in 5a_run_model_gpt.py /
+# eta (cross-cutting exposure, see compute_eta_time_dep in 5a_run_model_gpt.py /
 # 5b_run_model_bert.py) is mean pairwise cosine dissimilarity among prior
 # voters' belief vectors, negated and left on the same [-1,1] scale as
-# tau and c. It was chosen over several alternatives considered during model
+# tau and rho. It was chosen over several alternatives considered during model
 # development (Vendi score / effective rank, mean nearest-neighbour distance,
 # trace and generalized variance, Goodman-Kruskal concordance/discordance) for
 # being the simplest, cheapest, and most standard measure in the
-# network-heterogeneity literature (Mutz, 2006) that D is grounded in.
+# network-heterogeneity literature (Mutz, 2006) that eta is grounded in.
 #
 # It has one documented limitation, demonstrated here: mean-pairwise-average
 # measures cannot distinguish a large audience split into two internally
@@ -20,7 +20,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 # size grows, since same-camp and cross-camp pairs contribute oppositely to
 # the average and their counts scale together at the same rate. This script
 # reproduces that result under three controlled synthetic-audience scenarios,
-# as documented justification for the caveat noted in compute_D_time_dep.
+# as documented justification for the caveat noted in compute_eta_time_dep.
 #
 # Output: ../plots/FigA7.pdf
 
@@ -32,14 +32,14 @@ N_VALUES = [2, 3, 5, 8, 12, 20, 35, 50, 75, 100, 150, 200]
 
 
 # -------------------------------------------------------------------
-# D = -mean pairwise cosine similarity among an audience's belief vectors
+# eta = -mean pairwise cosine similarity among an audience's belief vectors
 # (audience-level version: computed over a full set of n voters at once,
-# rather than incrementally per-voter as in compute_D_time_dep -- this
+# rather than incrementally per-voter as in compute_eta_time_dep -- this
 # isolates how the measure behaves as a function of n and audience
 # composition, independent of the timestamp/sequential machinery used in
 # the real pipeline.)
 # -------------------------------------------------------------------
-def compute_D(belief_vectors):
+def compute_eta(belief_vectors):
     n = len(belief_vectors)
     if n <= 1:
         return 0.0
@@ -111,7 +111,7 @@ if __name__ == "__main__":
 
     for name, gen_fn in SCENARIOS.items():
         for n in N_VALUES:
-            trial_vals = [compute_D(gen_fn(n)) for _ in range(N_TRIALS)]
+            trial_vals = [compute_eta(gen_fn(n)) for _ in range(N_TRIALS)]
             results[name]["mean"].append(np.mean(trial_vals))
             results[name]["std"].append(np.std(trial_vals))
 
@@ -133,9 +133,9 @@ if __name__ == "__main__":
 
     ax.axhline(0, color='gray', linestyle='--', linewidth=0.8)
     ax.set_xlabel("Audience size (n prior voters)")
-    ax.set_ylabel(r"$D$ (cross-cutting exposure)")
+    ax.set_ylabel(r"$\eta$ (cross-cutting exposure)")
     ax.set_title(
-        "Simulated D by scenario and audience size\n"
+        "Simulated η by scenario and audience size\n"
         "(shaded band = ±1 SD across 200 Monte Carlo trials)"
     )
     ax.set_ylim(-1.05, 1.05)
@@ -149,7 +149,7 @@ if __name__ == "__main__":
     polarized_at_max_n = results["Polarized (two camps)"]["mean"][-1]
     diverse_at_max_n = results["Diverse / uncorrelated"]["mean"][-1]
     print(
-        f"At n={N_VALUES[-1]}: polarized D = {polarized_at_max_n:.3f}, "
-        f"diverse D = {diverse_at_max_n:.3f} "
+        f"At n={N_VALUES[-1]}: polarized eta = {polarized_at_max_n:.3f}, "
+        f"diverse eta = {diverse_at_max_n:.3f} "
         f"(gap = {abs(polarized_at_max_n - diverse_at_max_n):.3f})"
     )
