@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title></title>
+<style>
+  :root {
+    --bg: #ffffff; --ink: #1f2933; --muted: #5b6670; --faint: #8a939c;
+    --rule: #d9dee3; --grid: #eceef0; --chip: #f2f3f4; --panel: #eef3f8;
+    --accent: #1f4e79; --head: #1f4e79;
+    --belief: #2f6fd0; --argument: #D55E00; --audience: #009E73; --vote: #1f2933;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1a1a19; --ink: #eceae6; --muted: #b0b3b5; --faint: #858a8e;
+      --rule: #3a3d41; --grid: #2c2e30; --chip: #2c2e30; --panel: #222b34;
+      --head: #8fb3e0;
+      --belief: #4f8ff0; --argument: #e2702e; --audience: #1ea886; --vote: #eceae6;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; line-height: 1.45; }
+  header { background: var(--accent); color: #fff; padding: 18px 16px 16px; }
+  header > div, main { max-width: 720px; margin: 0 auto; }
+  header h1 { font-size: 1.45rem; line-height: 1.2; margin: 0 0 4px; letter-spacing: -.3px; }
+  header p { margin: 0; opacity: .9; font-size: .95rem; }
+  main { padding: 16px 16px 40px; }
+  .intro { margin: 0 0 14px; }
+  section { margin: 0 0 26px; }
+  h2 { font-size: 1.05rem; color: var(--head); border-bottom: 3px solid var(--head);
+       padding-bottom: 4px; margin: 0 0 12px; }
+  .q { display: flex; align-items: baseline; gap: 6px; font-weight: 700; font-size: .95rem; margin: 16px 0 6px; }
+  .q:first-of-type { margin-top: 0; }
+  .q small { font-weight: 400; color: var(--muted); }
+  .help { margin-left: auto; font: inherit; font-size: .8rem; color: var(--head); background: none; border: none;
+          text-decoration: underline; cursor: pointer; padding: 0; white-space: nowrap; }
+  select { width: 100%; font: inherit; padding: 9px 10px; border-radius: 4px; border: 1px solid var(--rule);
+           background: var(--bg); color: var(--ink); }
+  .seg { display: flex; gap: 4px; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label { flex: 1; text-align: center; padding: 9px 3px; border-radius: 4px; background: var(--chip);
+               cursor: pointer; font-size: .86rem; border: 2px solid transparent; user-select: none; }
+  .seg input:checked + label { background: var(--bg); border-color: currentColor; font-weight: 700; }
+  .seg input:focus-visible + label { outline: 2px solid var(--head); outline-offset: 2px; }
+  .seg.belief input:checked + label { color: var(--belief); }
+  .seg.argument input:checked + label { color: var(--argument); }
+  input[type=range] { width: 100%; accent-color: var(--audience); }
+  .range-ends { display: flex; justify-content: space-between; font-size: .8rem; color: var(--muted); }
+  .examples { margin-top: 14px; font-size: .88rem; color: var(--muted); }
+  .examples button { font: inherit; color: var(--head); background: none; border: none; padding: 0 2px;
+                     text-decoration: underline; cursor: pointer; }
+  .big { font-size: 2.2rem; font-weight: 700; line-height: 1.1; margin: 0; }
+  .sub { color: var(--muted); font-size: .92rem; margin: 2px 0 10px; }
+  .verdict { margin: 0 0 10px; }
+  .verdict b.belief { color: var(--belief); } .verdict b.argument { color: var(--argument); }
+  .md p { margin: 0 0 8px; } .md p:last-child { margin-bottom: 0; }
+  .note { color: var(--muted); font-size: .86rem; margin: 6px 0 0; }
+  .chart { width: 100%; display: block; overflow: visible; }
+  .chart text { fill: var(--muted); font-size: 12px; }
+  .chart .lbl { fill: var(--ink); font-size: 13px; font-weight: 700; }
+  .chart .val { fill: var(--ink); font-size: 12px; }
+  .chart .grid { stroke: var(--grid); }
+  .chart .mid { stroke: var(--faint); stroke-dasharray: 3 3; }
+  .row-hit { fill: transparent; cursor: pointer; }
+  .row-hit:hover, .row-hit:focus { fill: var(--chip); outline: none; }
+  .explain-panel { background: var(--panel); border-left: 4px solid var(--head); padding: 10px 12px; margin-top: 8px; }
+  .explain-panel p { margin: 0 0 8px; font-size: .92rem; }
+  .explain-panel p:last-child { margin-bottom: 0; }
+  .explain-panel code { font-size: .85em; }
+  .explain-panel[hidden] { display: none; }
+  a { color: var(--head); }
+  .tip { position: fixed; pointer-events: none; background: var(--bg); color: var(--ink); border: 1px solid var(--rule);
+         border-radius: 4px; padding: 8px 10px; font-size: .82rem; box-shadow: 0 4px 16px rgba(0,0,0,.12);
+         opacity: 0; transition: opacity .1s; max-width: 240px; z-index: 10; }
+  .tip b { font-size: .95rem; }
+  .tip .k { color: var(--muted); }
+  footer { border-top: 1px solid var(--rule); padding-top: 12px; color: var(--muted); font-size: .82rem; }
+  footer p { margin: 0 0 6px; }
+  .sr { position: absolute; left: -9999px; }
+</style>
+</head>
+<body>
+<!-- All visible text comes from text.js. Edit that file, not this one. -->
+<header>
+  <div>
+    <h1 data-md="header_title"></h1>
+    <p data-md="header_subtitle"></p>
+  </div>
+</header>
+
+<main>
+  <div class="intro md" data-md-block="intro"></div>
+
+  <section aria-labelledby="explain-h">
+    <h2 id="explain-h" data-md="explain_heading"></h2>
+    <select id="explain" aria-labelledby="explain-h"></select>
+    <div class="explain-panel md" id="explain-panel" hidden aria-live="polite"></div>
+  </section>
+
+  <section aria-labelledby="setup-h">
+    <h2 id="setup-h" data-md="setup_heading"></h2>
+
+    <label class="q" for="topic" data-md="topic_label"></label>
+    <select id="topic"></select>
+
+    <div class="q" id="belief-q"><span data-md="opinion_label"></span> <small data-md="opinion_symbol"></small>
+      <button class="help" data-help="opinion"></button></div>
+    <div class="seg belief" role="radiogroup" aria-labelledby="belief-q" id="belief"></div>
+
+    <div class="q" id="arg-q"><span data-md="case_label"></span> <small data-md="case_symbol"></small>
+      <button class="help" data-help="case"></button></div>
+    <div class="seg argument" role="radiogroup" aria-labelledby="arg-q" id="argument"></div>
+
+    <div class="q"><label for="eta" data-md="audience_label"></label> <small data-md="audience_symbol"></small>
+      <button class="help" data-help="audience"></button></div>
+    <input type="range" id="eta" min="0" max="100" step="1" value="50">
+    <div class="range-ends" id="eta-ends"><span></span><span></span><span></span></div>
+
+    <p class="examples"><span data-md="examples_label"></span>
+      <button data-preset="conflict"></button> ·
+      <button data-preset="strong"></button> ·
+      <button data-preset="agree"></button> ·
+      <button data-preset="noview"></button>
+    </p>
+  </section>
+
+  <section aria-labelledby="result-h" aria-live="polite">
+    <h2 id="result-h" data-md="result_heading"></h2>
+    <p class="big" id="big"></p>
+    <p class="sub" id="sub"></p>
+    <p class="verdict" id="verdict"></p>
+    <p class="note" style="margin:0 0 4px"><span data-md="arrows_caption"></span>
+      <button class="help" data-help="arrows" style="margin:0"></button></p>
+    <svg class="chart" id="pull" role="img" aria-labelledby="pull-desc"><desc id="pull-desc"></desc></svg>
+    <p class="note" id="audience-note"></p>
+  </section>
+
+  <section aria-labelledby="all-h">
+    <h2 id="all-h" data-md="all_heading"></h2>
+    <p class="note" id="all-summary" style="margin:0 0 6px"></p>
+    <svg class="chart" id="all" role="img"></svg>
+    <p class="note" data-md="all_caption"></p>
+  </section>
+
+  <footer class="md" data-md-block="footer"></footer>
+</main>
+<div class="tip" id="tip" role="tooltip"></div>
+
+<script src="data.js"></script>
+<script src="text.js"></script>
+<script>
+(() => {
+  const D = window.SIM_DATA, X = window.TEXT;
+  const S = D.std, T = D.topics;
+  const N_DRAWS = 400;
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------- text helpers ----------
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  // Fill {name} placeholders; unknown names are left as they are.
+  const fill = (s, v = {}) => String(s ?? "").replace(/\{(\w+)\}/g, (m, k) => (k in v ? v[k] : m));
+  const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  // Small, safe markdown: **bold**, [text](https://url), `code`, x_{sub}; blank line = new paragraph.
+  function md(s, v, block) {
+    const inline = t => esc(t)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2">$1</a>')
+      .replace(/_\{([^}]+)\}/g, "<sub>$1</sub>");
+    const t = fill(s, v);
+    return block ? t.trim().split(/\n\s*\n/).map(p => `<p>${inline(p.trim())}</p>`).join("") : inline(t);
+  }
+  const topicVars = r => ({ topic: r.topic, Topic: cap(r.topic), n: r.n_debates, rq1: X.rq1[r.rq1] ?? r.rq1 });
+
+  // static text
+  document.title = X.page_title;
+  document.querySelectorAll("[data-md]").forEach(e => { e.innerHTML = md(X[e.dataset.md]); });
+  document.querySelectorAll("[data-md-block]").forEach(e => { e.innerHTML = md(X[e.dataset.mdBlock], {}, true); });
+  document.querySelectorAll("#eta-ends span").forEach((e, i) => { e.textContent = X.audience_ends[i]; });
+  document.querySelectorAll("[data-preset]").forEach(b => { b.textContent = X.examples[b.dataset.preset]; });
+
+  // ---------- explain menu ----------
+  const exSel = document.getElementById("explain"), exPanel = document.getElementById("explain-panel");
+  const EX = Object.fromEntries(X.explain.map(e => [e.id, e]));
+  exSel.appendChild(new Option(X.explain_placeholder, ""));
+  X.explain.forEach(e => exSel.appendChild(new Option(e.question, e.id)));
+  function showExplain(id) {
+    exSel.value = id;
+    exPanel.hidden = !EX[id];
+    exPanel.innerHTML = EX[id] ? md(EX[id].answer, {}, true) : "";
+  }
+  exSel.addEventListener("change", () => showExplain(exSel.value));
+  document.querySelectorAll("[data-help]").forEach(b => {
+    const target = (X.help_targets || {})[b.dataset.help];
+    if (!target || !EX[target]) { b.remove(); return; }
+    b.textContent = b.dataset.help === "arrows" ? X.arrows_help_link : X.help_link;
+    b.addEventListener("click", () => {
+      showExplain(target);
+      document.getElementById("explain-h").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
+    });
+  });
+
+  // ---------- state ----------
+  const TAU = [-D.tau_strong, -D.tau_typical, 0, D.tau_typical, D.tau_strong];
+  const RHO = [-1, 0, 1];
+  const state = { t: Math.max(0, T.findIndex(r => r.topic === "abortion")), belief: 3, arg: 0, etaPct: 50 };
+
+  // ---------- model ----------
+  const z = (k, x) => (x - S[k].mean) / S[k].sd;
+  const sig = x => 1 / (1 + Math.exp(-x));
+  const logit = p => Math.log(p / (1 - p));
+  const fmtP = p => Math.round(p * 100) + "%";
+  const etaVal = pct => // piecewise-linear: 0 -> 5th pct, 50 -> median, 100 -> 95th pct
+    pct <= 50 ? D.eta_like + (D.eta_typical - D.eta_like) * pct / 50
+              : D.eta_typical + (D.eta_mixed - D.eta_typical) * (pct - 50) / 50;
+
+  // seeded normal RNG so the intervals are the same on every visit
+  function rng(seed) {
+    let s = seed >>> 0;
+    const u = () => { s += 0x6D2B79F5; let t = s; t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    return () => Math.sqrt(-2 * Math.log(u() + 1e-12)) * Math.cos(2 * Math.PI * u());
+  }
+  const draws = T.map((r, i) => {
+    const n = rng(1000 + i), out = [];
+    for (let d = 0; d < N_DRAWS; d++) out.push({
+      bt: r.b_tau[0] + r.b_tau[1] * n(), br: r.b_rho[0] + r.b_rho[1] * n(),
+      be: r.b_eta[0] + r.b_eta[1] * n(), bte: r.b_tau_eta[0] + r.b_tau_eta[1] * n() });
+    return out;
+  });
+  const meanCoef = r => ({ bt: r.b_tau[0], br: r.b_rho[0], be: r.b_eta[0], bte: r.b_tau_eta[0] });
+
+  // Split the linear predictor into pushes relative to a neutral voter
+  // (no opinion, tie, typical audience). The parts sum to the full model's eta.
+  function pulls(c, tau, rho, eta) {
+    const zt0 = z("tau", 0), zr0 = z("rho", 0), ze0 = z("eta", D.eta_typical);
+    const ze = z("eta", eta);
+    const dt = tau / S.tau.sd, dr = rho / S.rho.sd, de = (eta - D.eta_typical) / S.eta.sd;
+    const base = c.bt * zt0 + c.br * zr0 + c.be * ze0 + c.bte * zt0 * ze0;
+    const belief = (c.bt + c.bte * ze) * dt;
+    const argument = c.br * dr;
+    const audience = (c.be + c.bte * zt0) * de;
+    return { base, belief, argument, audience, total: base + belief + argument + audience };
+  }
+  const quant = (a, q) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(q * (s.length - 1))]; };
+
+  function predict(i) {
+    const tau = TAU[state.belief], rho = RHO[state.arg], eta = etaVal(state.etaPct);
+    const m = pulls(meanCoef(T[i]), tau, rho, eta);
+    const ps = draws[i].map(c => sig(pulls(c, tau, rho, eta).total));
+    return { m, p: sig(m.total), lo: quant(ps, 0.05), hi: quant(ps, 0.95), tau, rho, eta };
+  }
+
+  // ---------- controls ----------
+  const sel = document.getElementById("topic");
+  [...T.keys()].sort((a, b) => T[a].topic.localeCompare(T[b].topic))
+    .forEach(i => sel.appendChild(new Option(fill(X.topic_option, topicVars(T[i])), i)));
+  sel.addEventListener("change", () => { state.t = +sel.value; render(); });
+
+  function seg(id, labels, key) {
+    const box = document.getElementById(id);
+    labels.forEach((lab, j) => {
+      const inp = document.createElement("input");
+      inp.type = "radio"; inp.name = id; inp.id = `${id}-${j}`; inp.value = j;
+      inp.addEventListener("change", () => { state[key] = j; render(); });
+      const l = document.createElement("label"); l.htmlFor = inp.id; l.textContent = lab;
+      box.append(inp, l);
+    });
+  }
+  seg("belief", X.opinion_options, "belief");
+  seg("argument", X.case_options, "arg");
+  const etaIn = document.getElementById("eta");
+  etaIn.addEventListener("input", () => { state.etaPct = +etaIn.value; render(); });
+
+  const PRESETS = {
+    conflict: { belief: 3, arg: 0, etaPct: 50 },
+    strong:   { belief: 4, arg: 0, etaPct: 50 },
+    agree:    { belief: 3, arg: 2, etaPct: 50 },
+    noview:   { belief: 2, arg: 2, etaPct: 50 },
+  };
+  document.querySelectorAll("[data-preset]").forEach(b =>
+    b.addEventListener("click", () => { Object.assign(state, PRESETS[b.dataset.preset]); render(); }));
+
+  // ---------- tooltip ----------
+  const tip = document.getElementById("tip");
+  function showTip(evt, lines) {
+    tip.replaceChildren();
+    lines.forEach(([s, cls], j) => {
+      const d = document.createElement(j === 0 ? "b" : "div");
+      if (cls) d.className = cls; d.textContent = s; tip.appendChild(d);
+      if (j === 0) tip.appendChild(document.createElement("br"));
+    });
+    const r = evt.target.getBoundingClientRect();
+    const x = evt.clientX ?? r.left + 20, y = evt.clientY ?? r.top;
+    tip.style.left = Math.min(x + 12, innerWidth - 250) + "px";
+    tip.style.top = (y + 14) + "px";
+    tip.style.opacity = 1;
+  }
+  const hideTip = () => { tip.style.opacity = 0; };
+
+  // ---------- svg helpers ----------
+  const NS = "http://www.w3.org/2000/svg";
+  function el(tag, attrs, parent) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e); return e;
+  }
+  function txt(parent, x, y, s, attrs = {}) { const t = el("text", { x, y, ...attrs }, parent); t.textContent = s; return t; }
+  const DOM = 3.2; // log-odds shown: ±3.2 (about 4% to 96%)
+  const TICK_P = [0.05, 0.25, 0.5, 0.75, 0.95];
+  const clampL = v => Math.max(-DOM, Math.min(DOM, v));
+  const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  function axis(g, sx, y0, y1, labelY) {
+    const narrow = sx(DOM) - sx(-DOM) < 320;
+    TICK_P.forEach((p, i) => {
+      const x = sx(logit(p));
+      el("line", { x1: x, x2: x, y1: y0, y2: y1, class: p === 0.5 ? "mid" : "grid" }, g);
+      if (!narrow) txt(g, x, labelY, X.axis_ticks[i] ?? "", { "text-anchor": "middle" });
+    });
+    if (narrow) {
+      const [l, m, r] = X.axis_ticks_narrow;
+      txt(g, sx(-DOM), labelY, l ?? "", { "text-anchor": "start" });
+      txt(g, sx(0), labelY, m ?? "", { "text-anchor": "middle" });
+      txt(g, sx(DOM), labelY, r ?? "", { "text-anchor": "end" });
+    }
+  }
+
+  // ---------- arrow chart ----------
+  function drawPull(pred) {
+    const svg = document.getElementById("pull");
+    const W = svg.clientWidth || 600, labW = Math.min(140, Math.max(100, W * 0.3)), R = 14;
+    const rowH = 38, top = 8, rows = 4, H = top + rows * rowH + 26;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H);
+    [...svg.querySelectorAll(":scope > g")].forEach(n => n.remove());
+    const g = el("g", {}, svg);
+    const sx = v => labW + (clampL(v) + DOM) / (2 * DOM) * (W - labW - R);
+    axis(g, sx, top - 4, top + rows * rowH, H - 6);
+
+    const m = pred.m;
+    const rowsDef = [
+      [X.row_opinion, m.belief, "--belief", X.tip_opinion],
+      [X.row_case, m.argument, "--argument", X.tip_case],
+      [X.row_audience, m.audience, "--audience", X.tip_audience],
+    ];
+    let cur = m.base;
+    rowsDef.forEach(([lab, v, col, expl], j) => {
+      const y = top + j * rowH + rowH / 2;
+      txt(g, 0, y + 4, lab, { class: "lbl" });
+      const x0 = sx(cur), x1 = sx(cur + v), w = Math.abs(x1 - x0);
+      if (w >= 1) {
+        const head = Math.min(8, w);
+        el("path", {
+          d: x1 > x0
+            ? `M${x0},${y - 7} H${x1 - head} L${x1},${y} L${x1 - head},${y + 7} H${x0} Z`
+            : `M${x0},${y - 7} H${x1 + head} L${x1},${y} L${x1 + head},${y + 7} H${x0} Z`,
+          fill: cssVar(col) }, g);
+      } else {
+        el("circle", { cx: x0, cy: y, r: 3, fill: cssVar(col) }, g);
+      }
+      const side = v > 0.005 ? X.push_pro : v < -0.005 ? X.push_con : X.push_none;
+      const vx = v >= 0 ? Math.max(x0, x1) + 6 : Math.min(x0, x1) - 6;
+      const anchor = v >= 0 ? "start" : "end";
+      const fits = v >= 0 ? vx + 70 < W : vx - 70 > labW;
+      txt(g, fits ? vx : (v >= 0 ? Math.min(x0, x1) - 6 : Math.max(x0, x1) + 6), y + 4,
+          `${Math.abs(v).toFixed(2)} ${side}`, { class: "val", "text-anchor": fits ? anchor : (anchor === "start" ? "end" : "start") });
+      const hit = el("rect", { x: labW, y: y - rowH / 2, width: W - labW, height: rowH, fill: "transparent", tabindex: 0 }, g);
+      const show = e => showTip(e, [[`${lab}: ${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}`], [expl, "k"]]);
+      hit.addEventListener("pointermove", show); hit.addEventListener("focus", show);
+      hit.addEventListener("pointerleave", hideTip); hit.addEventListener("blur", hideTip);
+      cur += v;
+    });
+
+    const y = top + 3 * rowH + rowH / 2;
+    txt(g, 0, y + 4, X.row_prediction, { class: "lbl" });
+    el("line", { x1: sx(m.base), x2: sx(m.base), y1: top, y2: y, stroke: cssVar("--faint"), "stroke-width": 1 }, g);
+    const xl = sx(logit(pred.lo)), xh = sx(logit(pred.hi)), ink = cssVar("--vote");
+    el("line", { x1: xl, x2: xh, y1: y, y2: y, stroke: ink, "stroke-width": 2, "stroke-linecap": "round" }, g);
+    [xl, xh].forEach(x => el("line", { x1: x, x2: x, y1: y - 6, y2: y + 6, stroke: ink, "stroke-width": 2, "stroke-linecap": "round" }, g));
+    el("circle", { cx: sx(m.total), cy: y, r: 7, fill: ink, stroke: cssVar("--bg"), "stroke-width": 2 }, g);
+    const p = sig(m.total);
+    const vx = sx(m.total), right = vx < (labW + W) / 2;
+    const plab = p >= 0.5 ? fill(X.prediction_pro, { pct: fmtP(p) }) : fill(X.prediction_con, { pct: fmtP(1 - p) });
+    txt(g, right ? Math.max(vx + 12, xh + 8) : Math.min(vx - 12, xl - 8), y + 4, plab,
+        { class: "val", "text-anchor": right ? "start" : "end", "font-weight": 700 });
+
+    document.getElementById("pull-desc").textContent =
+      `${X.row_opinion} ${m.belief.toFixed(2)}, ${X.row_case} ${m.argument.toFixed(2)}, ${X.row_audience} ${m.audience.toFixed(2)}. ${X.row_prediction}: ${plab}.`;
+  }
+
+  // ---------- all-topics chart ----------
+  function drawAll(preds) {
+    const svg = document.getElementById("all");
+    svg.setAttribute("aria-label", X.all_heading);
+    const W = svg.clientWidth || 600, labW = Math.min(170, Math.max(130, W * 0.36)), R = 14;
+    const rowH = 18, top = 6, H = top + T.length * rowH + 24;
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H);
+    svg.replaceChildren();
+    const g = el("g", {}, svg);
+    const sx = v => labW + (clampL(v) + DOM) / (2 * DOM) * (W - labW - R);
+    axis(g, sx, top - 2, top + T.length * rowH, H - 6);
+    const order = [...T.keys()].sort((a, b) => preds[a].p - preds[b].p);
+    order.forEach((i, j) => {
+      const r = T[i], pr = preds[i], y = top + j * rowH + rowH / 2, on = i === state.t;
+      const v = { ...topicVars(r), pct: fmtP(pr.p), lo: fmtP(pr.lo), hi: fmtP(pr.hi) };
+      const hit = el("rect", { x: 0, y: y - rowH / 2, width: W, height: rowH, class: "row-hit", tabindex: 0,
+                               role: "button", "aria-label": `${r.topic}: ${fill(X.all_tip_value, v)}` }, g);
+      const t = txt(g, labW - 8, y + 4, r.topic, { "text-anchor": "end", "font-size": W < 420 ? 11 : 12 });
+      if (on) t.setAttribute("class", "lbl");
+      el("line", { x1: sx(logit(pr.lo)), x2: sx(logit(pr.hi)), y1: y, y2: y,
+                   stroke: on ? cssVar("--vote") : cssVar("--faint"), "stroke-width": 2, "stroke-linecap": "round",
+                   "pointer-events": "none" }, g);
+      el("circle", { cx: sx(pr.m.total), cy: y, r: on ? 6 : 4, fill: on ? cssVar("--vote") : cssVar("--muted"),
+                     stroke: cssVar("--bg"), "stroke-width": 2, "pointer-events": "none" }, g);
+      const show = e => showTip(e, [
+        [fill(X.all_tip_value, v)], [r.topic],
+        [fill(X.all_tip_interval, v), "k"], [fill(X.all_tip_meta, v), "k"]]);
+      hit.addEventListener("pointermove", show); hit.addEventListener("focus", show);
+      hit.addEventListener("pointerleave", hideTip); hit.addEventListener("blur", hideTip);
+      const pick = () => {
+        state.t = i; render();
+        document.getElementById("setup-h").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
+      };
+      hit.addEventListener("click", pick);
+      hit.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); } });
+    });
+  }
+
+  // ---------- text that changes with the answers ----------
+  function texts(pred, preds) {
+    const r = T[state.t], p = pred.p, m = pred.m;
+    const pro = p >= 0.5, side = pro ? X.side_pro : X.side_con;
+    const v = { ...topicVars(r), side, pct: fmtP(pro ? p : 1 - p),
+                lo: fmtP(pro ? pred.lo : 1 - pred.hi), hi: fmtP(pro ? pred.hi : 1 - pred.lo) };
+    document.getElementById("big").innerHTML = md(X.result_big, v);
+    document.getElementById("sub").innerHTML = md(X.result_sub, v);
+
+    const bl = m.belief, ar = m.argument;
+    let key, cls;
+    if (pred.tau !== 0 && pred.rho !== 0 && Math.sign(bl) !== Math.sign(ar)) {
+      const caseWins = Math.abs(ar) > Math.abs(bl);
+      key = caseWins ? "verdict_case_wins" : "verdict_opinion_wins"; cls = caseWins ? "argument" : "belief";
+      v.win = Math.abs(caseWins ? ar : bl).toFixed(2); v.lose = Math.abs(caseWins ? bl : ar).toFixed(2);
+    } else if (pred.tau !== 0 && pred.rho !== 0) key = "verdict_agree";
+    else if (pred.rho !== 0) { key = "verdict_only_case"; cls = "argument"; }
+    else if (pred.tau !== 0) { key = "verdict_only_opinion"; cls = "belief"; }
+    else key = "verdict_none";
+    const vEl = document.getElementById("verdict");
+    vEl.innerHTML = md(X[key], v);
+    if (cls) vEl.querySelectorAll("b").forEach(b => b.className = cls);
+
+    const an = document.getElementById("audience-note");
+    if (pred.tau === 0) an.innerHTML = md(X.audience_note_no_opinion, v);
+    else {
+      const c = meanCoef(r);
+      const pullAt = e => Math.abs(pulls(c, pred.tau, 0, e).belief);
+      const nv = { ...v, alike: pullAt(D.eta_like).toFixed(2), mixed: pullAt(D.eta_mixed).toFixed(2) };
+      an.innerHTML = md(r.rq2 !== "exposure-neutral" ? X.audience_note_reliable : X.audience_note_noise, nv);
+    }
+
+    const s = document.getElementById("all-summary");
+    if (pred.tau !== 0 && pred.rho !== 0 && Math.sign(pred.tau) !== Math.sign(pred.rho)) {
+      const k = preds.filter(q => Math.abs(q.m.argument) > Math.abs(q.m.belief)).length;
+      s.innerHTML = md(X.all_summary_conflict, { k });
+    } else {
+      s.innerHTML = md(X.all_summary_other, { pro: preds.filter(q => q.p >= 0.5).length });
+    }
+  }
+
+  // ---------- render ----------
+  function syncControls() {
+    sel.value = state.t;
+    document.getElementById(`belief-${state.belief}`).checked = true;
+    document.getElementById(`argument-${state.arg}`).checked = true;
+    etaIn.value = state.etaPct;
+    etaIn.setAttribute("aria-valuetext", `η = ${etaVal(state.etaPct).toFixed(2)}`);
+  }
+  function render() {
+    syncControls();
+    const preds = T.map((_, i) => predict(i));
+    const pred = preds[state.t];
+    texts(pred, preds);
+    drawAll(preds);
+    drawPull(pred);
+  }
+  let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(render, 120); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", render);
+  render();
+})();
+</script>
+</body>
+</html>
